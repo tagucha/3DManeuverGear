@@ -11,6 +11,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.inventory.ItemStack;
@@ -44,7 +45,7 @@ public class ManeuverGear implements Listener {
     private final Predicate<Player> has_gear;
 
     private final Map<Player, EntityHook> hooks = new HashMap<>();
-    private final Map<Player, Arrow> arrows = new HashMap<>();
+    private final Map<Player, Entity> target = new HashMap<>();
     private final Map<Player, FlyScheduler> flying = new HashMap<>();
     private final Map<Player, HavingGearScheduler> having = new HashMap<>();
 
@@ -56,7 +57,7 @@ public class ManeuverGear implements Listener {
 
     public void finishPull(Player player) {
         Optional.ofNullable(flying.remove(player)).ifPresent(BukkitRunnable::cancel);
-        Optional.ofNullable(arrows.remove(player)).filter(arrow -> !arrow.isDead()).ifPresent(Entity::remove);
+        Optional.ofNullable(target.remove(player)).filter(entity -> entity.getType().equals(EntityType.ARROW)).filter(arrow -> !arrow.isDead()).ifPresent(Entity::remove);
         Optional.ofNullable(having.remove(player)).ifPresent(BukkitRunnable::cancel);
         EntityHook hook = this.hooks.remove(player);
         if (hook != null) hook.ah();
@@ -70,8 +71,8 @@ public class ManeuverGear implements Listener {
         if (!this.has_gear.test(user)) return;
         if (this.flying.containsKey(user)) {
             this.finishPull(user);
-        } else if (arrows.containsKey(user)) {
-            if (!this.arrows.get(user).isOnGround()) return;
+        } else if (target.containsKey(user)) {
+            if (!this.target.get(user).isOnGround()) return;
             FlyScheduler scheduler = new FlyScheduler(this, user);
             this.flying.put(user,scheduler);
             scheduler.runTaskLater(this.plugin, 1);
@@ -91,7 +92,7 @@ public class ManeuverGear implements Listener {
             scheduler.runTaskLater(this.plugin, 1);
 
             hooks.put(user, hooky);
-            arrows.put(user, arrow);
+            target.put(user, arrow);
             having.put(user, scheduler);
         }
     }
@@ -99,12 +100,17 @@ public class ManeuverGear implements Listener {
     @EventHandler
     public void onDisable(PluginDisableEvent event) {
         this.hooks.values().forEach(net.minecraft.world.entity.Entity::ah);
-        this.arrows.values().forEach(Entity::remove);
+        this.target.values().forEach(Entity::remove);
     }
 
     @EventHandler
     public void onDeath(PlayerDeathEvent event) {
         this.finishPull(event.getEntity());
+    }
+
+    @EventHandler
+    public void onHit(ProjectileHitEvent event) {
+        if (this.target.containsValue(event.getEntity())) event.setCancelled(true);
     }
 
     public static EntityHook spawnHook(Player player) {
@@ -126,16 +132,16 @@ public class ManeuverGear implements Listener {
 
         @Override
         public void run() {
-            Arrow arrow = this.maneuverGear.arrows.get(user);
-            if (arrow.isDead() || arrow.getLocation().distance(user.getLocation()) < CANCEL_DISTANCE) {
+            Entity entity = this.maneuverGear.target.get(user);
+            if (entity.isDead() || entity.getLocation().distance(user.getLocation()) < CANCEL_DISTANCE) {
                 this.maneuverGear.finishPull(user);
                 this.cancel();
                 return;
             }
             Vector base = user.getVelocity();
-            double vecX = arrow.getLocation().getX() - user.getLocation().getX();
-            double vecY = arrow.getLocation().getY() - user.getLocation().getY();
-            double vecZ = arrow.getLocation().getZ() - user.getLocation().getZ();
+            double vecX = entity.getLocation().getX() - user.getLocation().getX();
+            double vecY = entity.getLocation().getY() - user.getLocation().getY();
+            double vecZ = entity.getLocation().getZ() - user.getLocation().getZ();
             Vector vec = new Vector(vecX, vecY, vecZ);
             vec = vec.add(new Vector(0, vec.length() / 10, 0)).multiply(PULL_FORCE / vec.length());
             Vector next = base.add(vec);
