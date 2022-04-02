@@ -3,8 +3,13 @@ package net.tagucha.plugin3DMG;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.*;
+import org.bukkit.event.EventHandler;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
@@ -15,7 +20,7 @@ public class PluginMain extends JavaPlugin {
                     this,
                     event -> (event.getAction().equals(Action.LEFT_CLICK_AIR) || event.getAction().equals(Action.LEFT_CLICK_BLOCK)) && event.getHand() == EquipmentSlot.HAND,
                     player -> player.getInventory().getItemInMainHand().isSimilar(ManeuverGear.MANEUVER_GEAR)
-                    );
+            );
     private final ManeuverGear GEAR_LEFT =
             new ManeuverGear(
                     this,

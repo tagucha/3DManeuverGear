@@ -9,8 +9,8 @@ import org.bukkit.craftbukkit.v1_18_R1.entity.CraftPlayer;
 import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.CreatureSpawnEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.inventory.ItemStack;
@@ -45,7 +45,8 @@ public class ManeuverGear implements Listener {
 
     private final Map<Player, EntityHook> hooks = new HashMap<>();
     private final Map<Player, Arrow> arrows = new HashMap<>();
-    private final Map<Player, BukkitRunnable> flying = new HashMap<>();
+    private final Map<Player, FlyScheduler> flying = new HashMap<>();
+    private final Map<Player, HavingGearScheduler> having = new HashMap<>();
 
     public ManeuverGear(PluginMain plugin, Predicate<PlayerInteractEvent> which, Predicate<Player> has_gear) {
         this.plugin = plugin;
@@ -53,11 +54,12 @@ public class ManeuverGear implements Listener {
         this.has_gear = has_gear;
     }
 
-    private void finishPull(Player player) {
-        Optional.ofNullable(flying.remove(player)).filter(runnable -> !runnable.isCancelled()).ifPresent(BukkitRunnable::cancel);
+    public void finishPull(Player player) {
+        Optional.ofNullable(flying.remove(player)).ifPresent(BukkitRunnable::cancel);
         Optional.ofNullable(arrows.remove(player)).filter(arrow -> !arrow.isDead()).ifPresent(Entity::remove);
+        Optional.ofNullable(having.remove(player)).ifPresent(BukkitRunnable::cancel);
         EntityHook hook = this.hooks.remove(player);
-        hook.ah();
+        if (hook != null) hook.ah();
     }
 
     @EventHandler
@@ -85,8 +87,12 @@ public class ManeuverGear implements Listener {
             hook.setInvulnerable(true);
             hook.setHookedEntity(arrow);
 
+            HavingGearScheduler scheduler = new HavingGearScheduler(this, user);
+            scheduler.runTaskLater(this.plugin, 1);
+
             hooks.put(user, hooky);
             arrows.put(user, arrow);
+            having.put(user, scheduler);
         }
     }
 
@@ -94,6 +100,11 @@ public class ManeuverGear implements Listener {
     public void onDisable(PluginDisableEvent event) {
         this.hooks.values().forEach(net.minecraft.world.entity.Entity::ah);
         this.arrows.values().forEach(Entity::remove);
+    }
+
+    @EventHandler
+    public void onDeath(PlayerDeathEvent event) {
+        this.finishPull(event.getEntity());
     }
 
     public static EntityHook spawnHook(Player player) {
@@ -133,6 +144,28 @@ public class ManeuverGear implements Listener {
             FlyScheduler scheduler = new FlyScheduler(this.maneuverGear, user);
             this.maneuverGear.flying.put(user,scheduler);
             scheduler.runTaskLater(this.maneuverGear.plugin, 1);
+        }
+    }
+
+    private static class HavingGearScheduler extends BukkitRunnable {
+        private final ManeuverGear gear;
+        private final Player player;
+
+        public HavingGearScheduler(ManeuverGear gear, Player player) {
+            this.gear = gear;
+            this.player = player;
+        }
+
+        @Override
+        public void run() {
+            if (this.gear.having.containsKey(this.player)) if (this.gear.has_gear.test(this.player)) {
+                HavingGearScheduler scheduler = new HavingGearScheduler(this.gear, this.player);
+                this.gear.having.put(this.player, scheduler);
+                scheduler.runTaskLater(this.gear.plugin, 1);
+                return;
+            }
+            this.gear.having.remove(this.player);
+            this.gear.finishPull(this.player);
         }
     }
 }
