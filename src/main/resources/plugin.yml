@@ -1,0 +1,9 @@
+name: 3DMaaneuverGear
+version: 1.0-SNAPSHOT
+main: net.tagucha.plugin3DMG.PluginMain
+api-version: 1.18
+author: tagucha
+commands:
+  3DMG:
+    usage: /3DMG
+    description: Give the 3-D maneuver gear
